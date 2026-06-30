@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Behaviour Diary</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --orange:       #D95F2B;
+    --orange-light: #F7E0D2;
+    --orange-pale:  #FDF5F0;
+    --orange-dark:  #A83E12;
+    --text:         #2C1A0E;
+    --muted:        #9A7060;
+    --border:       #E8C4AD;
+    --white:        #FFFFFF;
+    --row-alt:      #FFF8F4;
+    --green:        #2E7D52;
+    --green-bg:     #E6F4EC;
+    --red:          #B83232;
+    --red-bg:       #FDEAEA;
+    --yellow-bg:    #FFF8E0;
+    --yellow:       #92700A;
+  }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    background: var(--orange-pale);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    background: var(--orange);
+    padding: 20px 24px 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  header .icon { font-size: 2rem; }
+  header h1 { color: var(--white); font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
+  header p  { color: rgba(255,255,255,0.75); font-size: 0.8rem; margin-top: 2px; }
+  .sync-status {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-size: 0.75rem; color: rgba(255,255,255,0.85); white-space: nowrap;
+  }
+  .sync-dot { width: 8px; height: 8px; border-radius: 50%; background: #FFC83D; }
+  .sync-dot.live { background: #5FD584; }
+  .sync-dot.err { background: #FF6B6B; }
+
+  /* ── Main layout ── */
+  main { padding: 20px 16px; max-width: 860px; margin: 0 auto; }
+
+  /* ── Meta strip ── */
+  .meta-strip {
+    display: flex; gap: 12px; margin-bottom: 18px; flex-wrap: wrap;
+  }
+  .meta-strip label {
+    display: flex; flex-direction: column; gap: 4px;
+    font-size: 0.72rem; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.6px;
+  }
+  .meta-strip input {
+    border: 1.5px solid var(--border); border-radius: 8px; padding: 7px 12px;
+    font-size: 0.9rem; font-family: inherit; background: var(--white); color: var(--text);
+    width: 180px;
+  }
+  .meta-strip input:focus { outline: none; border-color: var(--orange); }
+
+  /* ── Form card ── */
+  .form-card {
+    background: var(--white);
+    border: 1.5px solid var(--border);
+    border-radius: 14px;
+    padding: 20px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(180,80,20,0.06);
+  }
+  .form-card h2 {
+    font-size: 0.85rem; font-weight: 700; color: var(--orange-dark);
+    text-transform: uppercase; letter-spacing: 0.7px; margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1.5px solid var(--orange-light);
+  }
+
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .full { grid-column: 1 / -1; }
+
+  .field { display: flex; flex-direction: column; gap: 5px; }
+  .field label {
+    font-size: 0.7rem; font-weight: 700; color: var(--orange-dark);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .field input, .field textarea, .field select {
+    border: 1.5px solid var(--border); border-radius: 8px; padding: 9px 12px;
+    font-size: 0.9rem; font-family: inherit; background: var(--white); color: var(--text);
+    transition: border-color 0.15s;
+  }
+  .field input:focus, .field textarea:focus, .field select:focus {
+    outline: none; border-color: var(--orange);
+  }
+  .field textarea { resize: vertical; min-height: 64px; }
+
+  /* severity chips inside select */
+  .field select { cursor: pointer; }
+
+  .actions { display: flex; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
+  .btn {
+    border: none; border-radius: 9px; padding: 10px 22px;
+    font-size: 0.9rem; font-family: inherit; font-weight: 700; cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn-primary { background: var(--orange); color: var(--white); }
+  .btn-primary:hover { background: var(--orange-dark); }
+  .btn-ghost { background: var(--orange-pale); color: var(--orange-dark); border: 1.5px solid var(--border); }
+  .btn-ghost:hover { background: var(--orange-light); }
+
+  /* ── Log section ── */
+  .log-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; flex-wrap: wrap; gap: 8px;
+  }
+  .log-header h2 { font-size: 1rem; font-weight: 700; color: var(--text); }
+  .count-badge {
+    background: var(--orange-light); color: var(--orange-dark);
+    font-size: 0.75rem; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  }
+  .btn-export {
+    background: var(--orange-dark); color: var(--white);
+    border: none; border-radius: 9px; padding: 9px 18px;
+    font-size: 0.85rem; font-family: inherit; font-weight: 700;
+    cursor: pointer; display: flex; align-items: center; gap: 6px;
+    transition: background 0.15s;
+  }
+  .btn-export:hover { background: #7A2D0A; }
+  .btn-export:disabled { background: var(--border); cursor: not-allowed; }
+  .btn-import { background: var(--white); color: var(--orange-dark); border: 1.5px solid var(--orange-dark); }
+  .btn-import:hover { background: var(--orange-pale); }
+
+  /* ── Table ── */
+  .table-wrap {
+    background: var(--white); border: 1.5px solid var(--border);
+    border-radius: 14px; overflow: hidden;
+    box-shadow: 0 2px 8px rgba(180,80,20,0.06);
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  thead tr { background: var(--orange-light); }
+  th {
+    padding: 10px 12px; text-align: left;
+    font-size: 0.7rem; font-weight: 700; color: var(--orange-dark);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border);
+  }
+  td {
+    padding: 10px 12px; border-bottom: 1px solid var(--orange-light);
+    vertical-align: top; color: var(--text);
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: var(--row-alt); }
+
+  .sev {
+    display: inline-block; padding: 2px 9px; border-radius: 12px;
+    font-size: 0.72rem; font-weight: 700; white-space: nowrap;
+  }
+  .sev-mild     { background: var(--green-bg); color: var(--green); }
+  .sev-moderate { background: var(--yellow-bg); color: var(--yellow); }
+  .sev-severe   { background: var(--red-bg); color: var(--red); }
+
+  .row-actions { display: flex; gap: 4px; }
+  .del-btn, .edit-btn {
+    background: none; border: none;
+    cursor: pointer; font-size: 1rem; padding: 2px 6px; border-radius: 6px;
+    transition: color 0.15s, background 0.15s;
+  }
+  .del-btn  { color: var(--border); }
+  .del-btn:hover  { color: var(--red); background: var(--red-bg); }
+  .edit-btn { color: var(--border); }
+  .edit-btn:hover { color: var(--orange); background: var(--orange-light); }
+
+  .form-card.editing { border-color: var(--orange); box-shadow: 0 0 0 3px rgba(217,95,43,0.15); }
+  .form-card.editing h2 { color: var(--orange); }
+  .edit-notice {
+    display: none; align-items: center; gap: 8px;
+    background: var(--orange-light); color: var(--orange-dark);
+    border-radius: 8px; padding: 8px 12px; font-size: 0.82rem; font-weight: 600;
+    margin-bottom: 14px;
+  }
+  .form-card.editing .edit-notice { display: flex; }
+  .btn-cancel { background: var(--white); color: var(--muted); border: 1.5px solid var(--border); }
+
+  .empty-state {
+    text-align: center; padding: 40px 20px; color: var(--muted);
+  }
+  .empty-state .icon { font-size: 2.5rem; margin-bottom: 10px; }
+  .empty-state p { font-size: 0.9rem; }
+
+  @media (max-width: 580px) {
+    .grid { grid-template-columns: 1fr; }
+    .full { grid-column: 1; }
+    th:nth-child(n+6), td:nth-child(n+6) { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="icon">📒</div>
+  <div>
+    <h1>Behaviour Diary</h1>
+    <p>Log tantrums, track patterns, share with caregivers</p>
+  </div>
+  <div class="sync-status" id="syncStatus"><span class="sync-dot" id="syncDot"></span><span id="syncText">Connecting…</span></div>
+</header>
+
+<main>
+  <!-- Meta -->
+  <div class="meta-strip">
+    <label>Child's name <input type="text" id="childName" placeholder="e.g. Xiao Ming"></label>
+    <label>Month / Year <input type="text" id="monthYear" placeholder="e.g. June 2026"></label>
+  </div>
+
+  <!-- Form -->
+  <div class="form-card" id="formCard">
+    <h2 id="formTitle">New Entry</h2>
+    <div class="edit-notice">✏️ Editing entry — make your changes and click Save.</div>
+    <div class="grid">
+      <div class="field">
+        <label>Date</label>
+        <input type="date" id="fDate">
+      </div>
+      <div class="field">
+        <label>Time</label>
+        <input type="time" id="fTime">
+      </div>
+      <div class="field">
+        <label>Problem / Behaviour</label>
+        <input type="text" id="fProblem" placeholder="e.g. hitting, screaming, throwing">
+      </div>
+      <div class="field">
+        <label>Severity</label>
+        <select id="fSeverity">
+          <option value="Mild">😤 Mild</option>
+          <option value="Moderate">😠 Moderate</option>
+          <option value="Severe">🤬 Severe</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Where did it happen?</label>
+        <input type="text" id="fWhere" placeholder="e.g. Bedroom, Kitchen, Playground">
+      </div>
+      <div class="field full">
+        <label>What happened before?</label>
+        <textarea id="fBefore" placeholder="e.g. I was busy feeding baby and couldn't play with him"></textarea>
+      </div>
+      <div class="field full">
+        <label>What happened after?</label>
+        <textarea id="fAfter" placeholder="e.g. Sent to room, then watched a movie together"></textarea>
+      </div>
+      <div class="field full">
+        <label>Other comments</label>
+        <input type="text" id="fComments" placeholder="e.g. Seemed tired, skipped afternoon nap">
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-primary" id="submitBtn" onclick="submitEntry()">+ Add Entry</button>
+      <button class="btn btn-ghost" onclick="clearForm()">Clear Form</button>
+      <button class="btn btn-ghost btn-cancel" id="cancelBtn" style="display:none" onclick="cancelEdit()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="log-header">
+    <div style="display:flex;align-items:center;gap:10px">
+      <h2>Today's Log</h2>
+      <span class="count-badge" id="countBadge">0 entries</span>
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn-export btn-import" id="importBtn" onclick="document.getElementById('importFile').click()">
+        ⬆ Import from Excel
+      </button>
+      <input type="file" id="importFile" accept=".xlsx,.xls" style="display:none" onchange="importExcel(event)">
+      <button class="btn-export" id="exportBtn" onclick="exportExcel()" disabled>
+        ⬇ Export to Excel
+      </button>
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Time</th>
+          <th>Problem</th>
+          <th>Severity</th>
+          <th>Where</th>
+          <th>Before</th>
+          <th>After</th>
+          <th>Comments</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+</main>
+
+<script>
+  // ── Supabase setup ──
+  var SUPABASE_URL = 'https://fyluqudueoyzeoyigblg.supabase.co';
+  var SUPABASE_KEY = 'sb_publishable_iM_1N8DNzrLIx6owGInsng_HyzPp_ey';
+  var sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+  var entries = [];       // each entry now has a Supabase `id`
+  var editingIndex = -1;
+
+  document.getElementById('fDate').value = new Date().toISOString().slice(0,10);
+
+  function setSync(state, text) {
+    var dot = document.getElementById('syncDot');
+    dot.className = 'sync-dot' + (state ? ' ' + state : '');
+    document.getElementById('syncText').textContent = text;
+  }
+
+  // Map DB row <-> UI entry shape
+  function fromRow(r) {
+    return {
+      id: r.id, date: r.entry_date || '', time: r.entry_time || '',
+      problem: r.problem || '', severity: r.severity || 'Mild',
+      where: r.location || '', before: r.before_event || '',
+      after: r.after_event || '', comments: r.comments || ''
+    };
+  }
+  function toRow(e) {
+    return {
+      entry_date: e.date || null, entry_time: e.time || null,
+      problem: e.problem, severity: e.severity, location: e.where,
+      before_event: e.before, after_event: e.after, comments: e.comments
+    };
+  }
+
+  async function loadEntries() {
+    setSync('', 'Loading…');
+    var res = await sb.from('diary_entries').select('*').order('created_at', { ascending: true });
+    if (res.error) { setSync('err', 'Connection error'); console.error(res.error); return; }
+    entries = res.data.map(fromRow);
+    setSync('live', 'Live — synced');
+    render();
+  }
+
+  // Realtime: pick up changes made by the other person
+  sb.channel('diary_entries_changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'diary_entries' }, function() {
+      loadEntries();
+    })
+    .subscribe();
+
+  loadEntries();
+
+  function submitEntry() {
+    if (editingIndex >= 0) { saveEdit(); } else { addEntry(); }
+  }
+
+  async function addEntry() {
+    var problem = document.getElementById('fProblem').value.trim();
+    if (!problem) { alert('Please enter the problem behaviour.'); return; }
+    setSync('', 'Saving…');
+    var row = toRow(readForm());
+    var res = await sb.from('diary_entries').insert(row).select();
+    if (res.error) { setSync('err', 'Save failed'); alert('Could not save: ' + res.error.message); return; }
+    setSync('live', 'Live — synced');
+    clearFormFields();
+    document.getElementById('fDate').value = new Date().toISOString().slice(0,10);
+    loadEntries();
+  }
+
+  function editEntry(i) {
+    editingIndex = i;
+    var e = entries[i];
+    document.getElementById('fDate').value     = e.date;
+    document.getElementById('fTime').value     = e.time;
+    document.getElementById('fProblem').value  = e.problem;
+    document.getElementById('fSeverity').value = e.severity;
+    document.getElementById('fWhere').value    = e.where;
+    document.getElementById('fBefore').value   = e.before;
+    document.getElementById('fAfter').value    = e.after;
+    document.getElementById('fComments').value = e.comments;
+
+    document.getElementById('formCard').classList.add('editing');
+    document.getElementById('formTitle').textContent = 'Edit Entry';
+    document.getElementById('submitBtn').textContent = '💾 Save Changes';
+    document.getElementById('cancelBtn').style.display = '';
+    document.getElementById('formCard').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function saveEdit() {
+    var problem = document.getElementById('fProblem').value.trim();
+    if (!problem) { alert('Please enter the problem behaviour.'); return; }
+    setSync('', 'Saving…');
+    var id = entries[editingIndex].id;
+    var row = toRow(readForm());
+    var res = await sb.from('diary_entries').update(row).eq('id', id);
+    if (res.error) { setSync('err', 'Save failed'); alert('Could not save: ' + res.error.message); return; }
+    setSync('live', 'Live — synced');
+    cancelEdit();
+    loadEntries();
+  }
+
+  function cancelEdit() {
+    editingIndex = -1;
+    document.getElementById('formCard').classList.remove('editing');
+    document.getElementById('formTitle').textContent = 'New Entry';
+    document.getElementById('submitBtn').textContent = '+ Add Entry';
+    document.getElementById('cancelBtn').style.display = 'none';
+    clearFormFields();
+    document.getElementById('fDate').value = new Date().toISOString().slice(0,10);
+  }
+
+  function readForm() {
+    return {
+      date:     document.getElementById('fDate').value,
+      time:     document.getElementById('fTime').value,
+      problem:  document.getElementById('fProblem').value.trim(),
+      severity: document.getElementById('fSeverity').value,
+      where:    document.getElementById('fWhere').value.trim(),
+      before:   document.getElementById('fBefore').value.trim(),
+      after:    document.getElementById('fAfter').value.trim(),
+      comments: document.getElementById('fComments').value.trim()
+    };
+  }
+
+  function clearForm() {
+    if (editingIndex >= 0) { cancelEdit(); } else { clearFormFields(); }
+  }
+
+  function clearFormFields() {
+    ['fProblem','fWhere','fBefore','fAfter','fComments'].forEach(function(id){ document.getElementById(id).value = ''; });
+    document.getElementById('fTime').value = '';
+    document.getElementById('fSeverity').value = 'Mild';
+  }
+
+  async function deleteEntry(i) {
+    if (!confirm('Delete this entry? This removes it for everyone.')) return;
+    if (editingIndex === i) cancelEdit();
+    setSync('', 'Deleting…');
+    var id = entries[i].id;
+    var res = await sb.from('diary_entries').delete().eq('id', id);
+    if (res.error) { setSync('err', 'Delete failed'); alert('Could not delete: ' + res.error.message); return; }
+    setSync('live', 'Live — synced');
+    loadEntries();
+  }
+
+  function sevClass(s) {
+    if (s === 'Mild') return 'sev-mild';
+    if (s === 'Moderate') return 'sev-moderate';
+    return 'sev-severe';
+  }
+
+  function fmt(date) {
+    return date ? new Date(date + 'T00:00:00').toLocaleDateString('en-SG', {day:'numeric',month:'short'}) : '—';
+  }
+
+  function render() {
+    var tbody = document.getElementById('tbody');
+    var badge = document.getElementById('countBadge');
+    var btn   = document.getElementById('exportBtn');
+
+    badge.textContent = entries.length + (entries.length === 1 ? ' entry' : ' entries');
+    btn.disabled = entries.length === 0;
+
+    if (entries.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="9"><div class="empty-state"><div class="icon">📋</div><p>No entries yet — fill in the form above to start logging.</p></div></td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = entries.map(function(e, i) {
+      return '<tr' + (i === editingIndex ? ' style="background:var(--orange-light)"' : '') + '>' +
+        '<td>' + fmt(e.date) + '</td>' +
+        '<td>' + (e.time || '—') + '</td>' +
+        '<td><strong>' + e.problem + '</strong></td>' +
+        '<td><span class="sev ' + sevClass(e.severity) + '">' + e.severity + '</span></td>' +
+        '<td>' + (e.where || '—') + '</td>' +
+        '<td>' + (e.before || '—') + '</td>' +
+        '<td>' + (e.after || '—') + '</td>' +
+        '<td>' + (e.comments || '—') + '</td>' +
+        '<td><div class="row-actions">' +
+          '<button class="edit-btn" onclick="editEntry(' + i + ')" title="Edit">✏️</button>' +
+          '<button class="del-btn" onclick="deleteEntry(' + i + ')" title="Remove">✕</button>' +
+        '</div></td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  async function importExcel(event) {
+    var file = event.target.files[0];
+    if (!file) return;
+    event.target.value = ''; // reset so re-selecting same file works
+
+    setSync('', 'Reading file…');
+    var data = await file.arrayBuffer();
+    var wb = XLSX.read(data, { cellDates: false });
+
+    // Find the "Behaviour Log" sheet, or fall back to the first sheet
+    var sheetName = wb.SheetNames.indexOf('Behaviour Log') >= 0 ? 'Behaviour Log' : wb.SheetNames[0];
+    var sheet = wb.Sheets[sheetName];
+    var rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false });
+
+    // Find the header row (the one containing "Problem / Behaviour")
+    var headerIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].indexOf('Problem / Behaviour') >= 0) { headerIdx = i; break; }
+    }
+    if (headerIdx === -1) {
+      setSync('live', 'Live — synced');
+      alert('Could not find the expected header row ("Problem / Behaviour") in this file. Make sure you\'re importing a file exported from this tracker.');
+      return;
+    }
+
+    var headers = rows[headerIdx];
+    var col = {
+      date: headers.indexOf('Date'), time: headers.indexOf('Time'),
+      problem: headers.indexOf('Problem / Behaviour'), severity: headers.indexOf('Severity'),
+      where: headers.indexOf('Where?'), before: headers.indexOf('What Happened Before?'),
+      after: headers.indexOf('What Happened After?'), comments: headers.indexOf('Other Comments')
+    };
+
+    var toInsert = [];
+    for (var r = headerIdx + 1; r < rows.length; r++) {
+      var row = rows[r];
+      if (!row || !row[col.problem]) continue; // skip blank rows
+      toInsert.push({
+        entry_date: row[col.date] || null,
+        entry_time: row[col.time] || null,
+        problem: row[col.problem] || '',
+        severity: row[col.severity] || 'Mild',
+        location: row[col.where] || '',
+        before_event: row[col.before] || '',
+        after_event: row[col.after] || '',
+        comments: row[col.comments] || ''
+      });
+    }
+
+    if (toInsert.length === 0) {
+      setSync('live', 'Live — synced');
+      alert('No entries found to import.');
+      return;
+    }
+
+    if (!confirm('Found ' + toInsert.length + ' entr' + (toInsert.length === 1 ? 'y' : 'ies') + ' in this file. Add them to the shared log?')) {
+      setSync('live', 'Live — synced');
+      return;
+    }
+
+    setSync('', 'Importing…');
+    var res = await sb.from('diary_entries').insert(toInsert);
+    if (res.error) { setSync('err', 'Import failed'); alert('Could not import: ' + res.error.message); return; }
+    setSync('live', 'Live — synced');
+    loadEntries();
+    alert('Imported ' + toInsert.length + ' entries successfully.');
+  }
+
+  function exportExcel() {
+    if (entries.length === 0) return;
+
+    var childName = document.getElementById('childName').value.trim() || 'Child';
+    var monthYear = document.getElementById('monthYear').value.trim() || '';
+
+    var wb = XLSX.utils.book_new();
+
+    var headers = ['Date','Time','Problem / Behaviour','Severity','Where?','What Happened Before?','What Happened After?','Other Comments'];
+    var rows = entries.map(function(e) {
+      return [e.date, e.time, e.problem, e.severity, e.where, e.before, e.after, e.comments];
+    });
+
+    var wsData = [
+      [childName + ' — Behaviour Diary' + (monthYear ? ' (' + monthYear + ')' : '')],
+      [],
+      headers
+    ].concat(rows);
+
+    var ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [{wch:12},{wch:8},{wch:28},{wch:12},{wch:20},{wch:32},{wch:32},{wch:28}];
+    ws['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:7} }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Behaviour Log');
+
+    var mild     = entries.filter(function(e){ return e.severity==='Mild'; }).length;
+    var moderate = entries.filter(function(e){ return e.severity==='Moderate'; }).length;
+    var severe   = entries.filter(function(e){ return e.severity==='Severe'; }).length;
+
+    var ws2Data = [
+      ['Monthly Summary'], [],
+      ['Severity','Count'],
+      ['Mild 😤', mild],
+      ['Moderate 😠', moderate],
+      ['Severe 🤬', severe],
+      ['TOTAL', mild + moderate + severe]
+    ];
+    var ws2 = XLSX.utils.aoa_to_sheet(ws2Data);
+    ws2['!cols'] = [{wch:18},{wch:10}];
+    ws2['!merges'] = [{ s:{r:0,c:0}, e:{r:0,c:1} }];
+    XLSX.utils.book_append_sheet(wb, ws2, 'Summary');
+
+    var filename = (childName.replace(/\s+/g,'_') || 'Behaviour') + '_Diary_' + (monthYear.replace(/\s+/g,'_') || new Date().toISOString().slice(0,7)) + '.xlsx';
+    XLSX.writeFile(wb, filename);
+  }
+</script>
+</body>
+</html>
